@@ -3,19 +3,21 @@
 from .io import read_piccolo_file
 import os
 import pandas
-
-_OPTICAL_PIXEL_RANGES = {
-    # https://www.flowinjection.com/images/Flame_Technical_Specifications.pdf
-    # '_FLMS': [20, 2047]
-}
-
-
-_DARK_PIXEL_RANGES = {
-    # https://www.flowinjection.com/images/Flame_Technical_Specifications.pdf
-    # '_FLMS': [[2, 17]],
-    # # https://old.spectrecology.com/wp-content/uploads/2015/12/QEPro-OEM-Data-Sheet.pdf
-    # '_QEP': [[4, 10], [-10, -4]]
-}
+import xarray
+import numpy as np
+#
+# _OPTICAL_PIXEL_RANGES = {
+#     # https://www.flowinjection.com/images/Flame_Technical_Specifications.pdf
+#     # '_FLMS': [20, 2047]
+# }
+#
+#
+# _DARK_PIXEL_RANGES = {
+#     # https://www.flowinjection.com/images/Flame_Technical_Specifications.pdf
+#     # '_FLMS': [[2, 17]],
+#     # # https://old.spectrecology.com/wp-content/uploads/2015/12/QEPro-OEM-Data-Sheet.pdf
+#     # '_QEP': [[4, 10], [-10, -4]]
+# }
 
 class RadiometricCorrection:
     """Class for performing calibration transformation of Piccolo data.
@@ -24,26 +26,31 @@ class RadiometricCorrection:
     Correction (3) Dark Signal subtraction (4) integration time normalisation
     (5) application of Gain (from calibration files).
 
-    (1) Dark Signal Estimation
+    ### 1. Dark Signal Estimation
+
     As it has been observed that the QE Pro used in our lab group does not have
     adequate optical dark pixels, the dark signal is estimated from the
     reference file rather than from the optical dark pixels. By default the
     first dark file will be used.
 
-    (2) Non Linearity Correction
+    ### 2. Non Linearity Correction
+
     This is a linear transformation:
         corrected = dark + (raw - dark) / f(raw - dark)
     where f is a polynomial specified in the header
 
-    (3) Dark Signal Subtraction
+    ### 3. Dark Signal Subtraction
+
     This is a linear transformation:
         subtracted = corrected - dark
 
-    (4) Integration Normalisation
+    ### 4. Integration Normalisation
+
     This is a linear transformation:
         normalised = subtracted / integration_time
 
-    (5) Gain adjustment
+    ### 5. Gain adjustment
+
     Conversion of DN to calibrated units using a calibration file
         calibrated = normalised * gain
 
@@ -60,6 +67,7 @@ class RadiometricCorrection:
                 specify a single file
         """
         self._cal_coefs = {}
+        self.dark_reference = None
         self._dark_reference_file = dark_reference
 
         for c in cal_file_paths:
@@ -72,14 +80,22 @@ class RadiometricCorrection:
         Args:
             piccolo_sequence: open data files
         """
-        dark_signal =
-        cal = self.get_calibration(spectrum).interp_like(spectrum,
-                                                         method='linear')
-        # dark_signal = self.get_dark_signal(spectrum)
-        # unclear whether this needs conversion as in ms
-        t_s = spectrum.attrs['IntegrationTime']
-
-        return cal * ((spectrum - dark_signal) / t_s)
+        if not self.dark_reference:
+            self.set_dark_reference(piccolo_sequence,
+                                     self._dark_reference_file)
+        out = {}
+        # iterate filename
+        for filename in piccolo_sequence.keys():
+            _sub = {}
+            for serial in piccolo_sequence[filename].keys():
+                _sub2 = {}
+                for dArray in piccolo_sequence[filename][serial]:
+                    _sub2[dArray.attrs['Direction']] = self._transform_single(
+                        dArray
+                    )
+                _sub[serial] = _sub2
+            out[filename] = _sub
+        return out
 
     def get_calibration(self, spectrum):
         """Returns the calibration array
@@ -101,26 +117,61 @@ class RadiometricCorrection:
             direction = spectrum.attrs['Direction']
             serial = spectrum.attrs['name']
             # just take the mean across all regions
-            return float(self.dark_reference[serial][direction].mean())
+            return self.dark_reference[serial][direction]
         else:
             # fallback to instrument optical dark pixels
             return spectrum.attrs['DarkSignal']
 
-    def _calculate_dark_reference(self, piccolo_sequence, key=None):
-        # find all keys with dark tag
+    def set_dark_reference(self, piccolo_sequence, key=None):
+        """Loads the dark reference from a piccolo_sequence.
+
+        By default the first file is used, unless key specified.
+
+        Args:
+            piccolo_sequence: A piccolo sequence dictionary
+            key (str): filename of .pico to use for dark signal
+        """
+        # find correct loaded pico file
         if not key:
             key = [x for x in piccolo_sequence.keys() if '_dark' in x]
             if len(key) < 1:
                 raise ValueError('No dark signal file found')
             key = key[0]
+
         if key not in piccolo_sequence:
             raise ValueError('{} not in piccolo_sequence'.format(key))
+
         f = piccolo_sequence[key]
         out = {}
         for serial in f.keys():
-            arrs = f[serial]
-            out[serial] = {x.attrs['Direction']: x for x in arrs}
-        return out
+            _sub = {}
+            for arr in f[serial]:
+                sat_lvl = arr.attrs['SaturationLevel']
+                direction = arr.attrs['Direction']
+                _arr = self._trim_to_optical_range(arr).where(arr < sat_lvl)
+                _sub[direction] = float(_arr.mean())
+            out[serial] = _sub
+        self.dark_reference = out
+
+    def _transform_single(self, da):
+        # Get parameters
+        dark_signal = self.get_dark_signal(da)
+        calibration = self.get_calibration(da)
+        # make an xarray copy
+        x = da.copy()
+
+        # non linearity correction
+        x = self._correct_non_linearity(x, dark_signal)
+        # Trim to internally specified optical range
+        x = self._trim_to_optical_range(x)
+        # dark signal subtraction
+        # integration time normalisation
+        x = (x - dark_signal) / x.attrs['IntegrationTime']
+        x = calibration.interp_like(x, method='linear') * x
+        # add metadata again
+        x.attrs = da.attrs
+        x.attrs['DarkSignal'] = dark_signal
+        return x
 
     def _truncate(self, spectrum):
         _01 = spectrum.quantile(.01)
@@ -142,29 +193,24 @@ class RadiometricCorrection:
         return {'Downwelling': parse('dnw'),
                 'Upwelling': parse('upw')}
 
+    def _trim_to_optical_range(self, dataArray):
+        _range = self._get_optical_pixel_range(dataArray)
+        ds = dataArray.swap_dims({'wavelength':'pixel'})
+        return ds.isel(pixel=slice(*_range)).swap_dims(
+            {'pixel': 'wavelength'})
+
     def _get_optical_pixel_range(self, dataArray):
         # use tag if present in metadata
         if 'OpticalPixelRange' in dataArray.attrs:
             return list(dataArray.attrs['OpticalPixelRange'])
-        # Fallback to datasheet specification
-        for tag, pix_range in _OPTICAL_PIXEL_RANGES.items():
-            if tag in dataArray.attrs['name']:
-                return list(pix_range)
-        raise ValueError('OpticalPixelRange not retrieved')
+        # Fallback to full range
+        return [0,len(dataArray)]
 
-    def _trim_to_optical_range(self, dataArray):
-        return dataArray.isel(pixel=slice(
-            *dataArray.attrs['OpticalPixelRange']))
-
-    def _correct_non_linearity(self, dataArray):
+    def _correct_non_linearity(self, dataArray, dark):
         # Dark signal subtraction and non-linearity correction
-        try:
-            coefs = np.array(dataArray.attrs['NonlinearityCorrectionCoefficients'])
-        except KeyError:
-            coefs = np.array(dataArray.attrs['NonlinearityCorrectionCoefficients'])
+        coefs = np.array(dataArray.attrs['NonlinearityCorrectionCoefficients'])
         # poly1d requires coefs in reverse power order
         cpoly = np.poly1d(coefs[::-1])
-        dark = dataArray.attrs['DarkSignal']
         corrected = dark + (dataArray - dark) / cpoly(dataArray - dark)
         corrected.attrs = dataArray.attrs
         return corrected
