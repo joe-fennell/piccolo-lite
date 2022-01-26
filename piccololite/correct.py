@@ -1,6 +1,5 @@
 """Radiometric Correction
 """
-from .io import read_piccolo_file
 import os
 import pandas
 import xarray
