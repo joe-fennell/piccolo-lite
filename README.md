@@ -40,5 +40,7 @@ ax.set_ylim(70,165)
 ax.legend(custom_lines, ['QEPro','Flame-S'])
 ax.set_title('Lamp spectra (10 repeats overplotted)')
 ```
+## Documentation
+API reference can be found [here](docs/API.md)
 
 ## Development
