@@ -17,7 +17,6 @@ setuptools.setup(
     install_requires=[
         'xarray',
         'numpy',
-        'json',
         'pandas',
         'netcdf4'
     ],
