@@ -1,11 +1,18 @@
 ![example workflow](https://github.com/joe-fennell/piccolo-lite/actions/workflows/python-package.yml/badge.svg)
 
-# Piccolo Lite
-Stripped down xarray implementation i/o and Radiometric Correction.
+# Piccolo-Lite
+> NOTE: this project is under development and not considered stable
 
-> Note this is not affiliated with the original, excellent Piccolo project which can be found [here](https://github.com/TeamPiccolo/)
+Stripped down xarray implementation to read/calibrate/convert piccolo spectral sequences into NetCDF4 files.
 
-> Note this project is under development and not considered stable
+The design principals are:
+- Allow simple access to the Piccolo datasets
+- Use the xarray/NetCDF4 data models
+- Make use of coordinates and attributes in order to keep the metadata with the measurement
+- Apply radiometric correction in one transformation
+- Append metadata after any processing to describe the transformation
+
+> This is not affiliated with the original Piccolo project. Their homepage can be found [here](https://github.com/TeamPiccolo/).
 
 ## Installation
 ```bash
@@ -16,7 +23,7 @@ pip install .
 
 ## Getting Started
 ```python
-from piccololite import read_piccolo_sequence, RadiometricCorrection
+import piccololite
 
 # this will need to be updated if run outside the repository root
 root = 'test/unit/data/'
@@ -41,7 +48,9 @@ for CAPTURE in corrected:
 ax.set_ylim(70,165)
 ax.legend(custom_lines, ['QEPro','Flame-S'])
 ax.set_title('Lamp spectra (10 repeats overplotted)')
+
 ```
+![Example plot](plots/example.png)
 ## Documentation
 API reference can be found [here](docs/API.md)
 
