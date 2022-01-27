@@ -43,3 +43,18 @@ def test_dir_read():
     # Manual check metadata
     assert "SaturationLevel" in ds['S_FLMS01691'][1].attrs
     assert "SaturationLevel" in ds['S_QEP00984'][1].attrs
+
+def test_dir_read_single():
+    _ds = read_piccolo_sequence([os.path.join(HERE, 'data',
+                                             'b000000_s000005_light.pico')])
+    ds = _ds['b000000_s000005_light.pico']
+
+    # Manually checked raw pixel values for b000000_s000005_light.pico
+    assert ds['S_QEP00984'][0][0] == 1644
+    assert ds['S_QEP00984'][0][-1] == 200000
+    assert ds['S_FLMS01691'][0][0] == 7
+    assert ds['S_FLMS01691'][0][-1] == 752
+
+    # Manual check metadata
+    assert "SaturationLevel" in ds['S_FLMS01691'][1].attrs
+    assert "SaturationLevel" in ds['S_QEP00984'][1].attrs
