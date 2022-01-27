@@ -1,4 +1,6 @@
-from piccololite import read_piccolo_file, read_piccolo_sequence
+from piccololite import read_piccolo_file, read_piccolo_sequence, \
+sequence_to_datasets
+
 import os
 import json
 
@@ -43,23 +45,30 @@ def test_dir_read_single():
     _check_b000000_s000005_light(ds)
 
 
+def test_sequence_to_datasets():
+    _ds = read_piccolo_sequence(os.path.join(HERE, 'data'))
+    _new = sequence_to_datasets(_ds)
+    # 24 readings in each dataset
+    assert len(_new['S_QEP00984']) == 24
+
+
 # file specific checking parameters
 def _check_b000000_s000005_light(ds):
     # Manually checked raw pixel values for b000000_s000005_light.pico
-    assert ds['S_QEP00984'][0][0] == 1644
-    assert ds['S_QEP00984'][0][-1] == 200000
-    assert ds['S_FLMS01691'][0][0] == 7
-    assert ds['S_FLMS01691'][0][-1] == 752
+    assert ds['S_QEP00984']['Upwelling'][0] == 1644
+    assert ds['S_QEP00984']['Upwelling'][-1] == 200000
+    assert ds['S_FLMS01691']['Upwelling'][0] == 7
+    assert ds['S_FLMS01691']['Upwelling'][-1] == 752
 
     # Manually checked array lengths
-    assert len(ds['S_FLMS01691'][0]) == 2048
-    assert len(ds['S_QEP00984'][0]) == 1044
+    assert len(ds['S_FLMS01691']['Upwelling']) == 2048
+    assert len(ds['S_QEP00984']['Upwelling']) == 1044
 
     # Manual check metadata
-    assert "SaturationLevel" in ds['S_FLMS01691'][1].attrs
-    assert "SaturationLevel" in ds['S_QEP00984'][1].attrs
+    assert "SaturationLevel" in ds['S_FLMS01691']['Upwelling'].attrs
+    assert "SaturationLevel" in ds['S_QEP00984']['Upwelling'].attrs
 
 def _check_b000000_s000000_dark(ds):
     # Manually checked array lengths
-    assert len(ds['S_FLMS01691'][0]) == 2048
-    assert len(ds['S_QEP00984'][0]) == 1044
+    assert len(ds['S_FLMS01691']['Upwelling']) == 2048
+    assert len(ds['S_QEP00984']['Upwelling']) == 1044

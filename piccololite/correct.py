@@ -1,22 +1,12 @@
 """Radiometric Correction
 """
+import datetime
 import os
 import pandas
 import xarray
 import numpy as np
-#
-# _OPTICAL_PIXEL_RANGES = {
-#     # https://www.flowinjection.com/images/Flame_Technical_Specifications.pdf
-#     # '_FLMS': [20, 2047]
-# }
-#
-#
-# _DARK_PIXEL_RANGES = {
-#     # https://www.flowinjection.com/images/Flame_Technical_Specifications.pdf
-#     # '_FLMS': [[2, 17]],
-#     # # https://old.spectrecology.com/wp-content/uploads/2015/12/QEPro-OEM-Data-Sheet.pdf
-#     # '_QEP': [[4, 10], [-10, -4]]
-# }
+
+from ._version import __version__
 
 class RadiometricCorrection:
     """Class for performing calibration transformation of Piccolo data.
@@ -80,18 +70,17 @@ class RadiometricCorrection:
         Args:
             piccolo_sequence: open data files
         """
-        if not self.dark_reference:
-            self.set_dark_reference(piccolo_sequence,
-                                     self._dark_reference_file)
+        self.set_dark_reference(piccolo_sequence, self._dark_reference_file)
+
         out = {}
         # iterate filename
         for filename in piccolo_sequence.keys():
             _sub = {}
             for serial in piccolo_sequence[filename].keys():
                 _sub2 = {}
-                for dArray in piccolo_sequence[filename][serial]:
-                    _sub2[dArray.attrs['Direction']] = self._transform_single(
-                        dArray
+                for _dir in piccolo_sequence[filename][serial].keys():
+                    _sub2[_dir] = self._transform_single(
+                        piccolo_sequence[filename][serial][_dir]
                     )
                 _sub[serial] = _sub2
             out[filename] = _sub
@@ -145,9 +134,11 @@ class RadiometricCorrection:
         out = {}
         for serial in f.keys():
             _sub = {}
-            for arr in f[serial]:
+            for _dir in f[serial].keys():
+                arr = f[serial][_dir]
                 sat_lvl = arr.attrs['SaturationLevel']
                 direction = arr.attrs['Direction']
+                # Calculate dark signal
                 _arr = self._trim_to_optical_range(arr).where(arr < sat_lvl)
                 _sub[direction] = float(_arr.mean())
             out[serial] = _sub
@@ -170,7 +161,13 @@ class RadiometricCorrection:
         x = calibration.interp_like(x, method='linear') * x
         # add metadata again
         x.attrs = da.attrs
+        # add additional metadata
+        x.attrs['CalibrationFilePath'] = calibration.attrs['SourceFilePath']
         x.attrs['DarkSignal'] = dark_signal
+        x.attrs['RadiometricCorrectionCompleteUTC'] = \
+            datetime.datetime.utcnow().isoformat()
+        x.attrs['RadiometricCorrectionVersion'] = 'piccololite_v{}'.format(
+            __version__)
         return x
 
     def _truncate(self, spectrum):
@@ -188,6 +185,7 @@ class RadiometricCorrection:
         def parse(col):
             ar = xarray.DataArray(raw[col],
                                   coords=[('wavelength',raw['wvl'])])
+            ar.attrs['SourceFilePath'] = os.path.abspath(fpath)
             # truncate at .99 quantile
             return self._truncate(ar)
         return {'Downwelling': parse('dnw'),

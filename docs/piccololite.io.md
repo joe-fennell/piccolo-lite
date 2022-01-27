@@ -41,6 +41,51 @@ Args and Kwargs can be supplied to read_piccolo_file
  - <b>`files`</b>:  Can be a list or path to a directory of .pico files 
 
 
+---
+
+## <kbd>function</kbd> `sequence_to_datasets`
+
+```python
+sequence_to_datasets(piccolo_sequence, clean_metadata=True)
+```
+
+Converts a Piccolo sequence dictionary to xarray Datasets. 
+
+Each dataset represents a single instrument. 
+
+
+
+**Args:**
+ 
+ - <b>`piccolo_sequence`</b>:  nested dictionary of piccolo spectra. 
+ - <b>`clean_metadata`</b> (bool):  if True, attempts to clean metadata  so that the dataset is safe for writing to netcdf 
+
+
+
+**Returns:**
+ dictionary of xarray Datasets keyed by instrument serial 
+
+
+---
+
+## <kbd>function</kbd> `sequence_to_netcdf`
+
+```python
+sequence_to_netcdf(piccolo_sequence, fname)
+```
+
+Converts a Piccolo sequence dictionary to NetCDF files. 
+
+Each file represents a single instrument. 
+
+
+
+**Args:**
+ 
+ - <b>`piccolo_sequence`</b>:  nested dictionary of piccolo spectra.  Must be in the form [filename][instrument][downwelling]  or a dictionary of xarray Datasets 
+ - <b>`fname`</b> (str):  destination filename 
+
+
 
 
 ---

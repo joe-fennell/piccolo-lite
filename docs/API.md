@@ -16,6 +16,8 @@
 
 - [`io.read_piccolo_file`](./piccololite.io.md#function-read_piccolo_file): Read in a piccolo data file.
 - [`io.read_piccolo_sequence`](./piccololite.io.md#function-read_piccolo_sequence): Read a directory of .pico files or an explicit list.
+- [`io.sequence_to_datasets`](./piccololite.io.md#function-sequence_to_datasets): Converts a Piccolo sequence dictionary to xarray Datasets.
+- [`io.sequence_to_netcdf`](./piccololite.io.md#function-sequence_to_netcdf): Converts a Piccolo sequence dictionary to NetCDF files.
 
 
 ---
