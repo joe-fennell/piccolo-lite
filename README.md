@@ -1,3 +1,5 @@
+![example workflow](https://github.com/joe-fennell/piccolo-lite/actions/workflows/python-package.yml/badge.svg)
+
 # Piccolo Lite
 Stripped down xarray implementation i/o and Radiometric Correction.
 
