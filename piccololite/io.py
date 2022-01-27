@@ -32,6 +32,7 @@ def read_piccolo_file(piccolo_data, assign_coords=False):
                 raise f
 
     spectra = []
+    names = []
     for i, ds in enumerate(_data['Spectra']):
         _pixel = _make_spectrum(ds)
         _pixel.attrs['SourceFilePath'] = fpath
@@ -43,16 +44,15 @@ def read_piccolo_file(piccolo_data, assign_coords=False):
             _pixel = _assign_coords(_pixel, assign_coords)
 
         spectra.append(_pixel.swap_dims({'pixel': 'wavelength'}))
+        names.append(_pixel.attrs['name'])
 
     # sort into 1 dataset per instrument
-    out = {}
+    out = {k:{'Downwelling':None, 'Upwelling':None} for k in np.unique(names)}
+
     for s in spectra:
         name = s.attrs['name']
-        if name in out:
-            out[name].append(s)
-        else:
-            out[name] = [s]
-
+        direction = s.attrs['Direction']
+        out[name][direction] = s
     return out
 
 def read_piccolo_sequence(files, *args, **kwargs):
@@ -76,6 +76,60 @@ def read_piccolo_sequence(files, *args, **kwargs):
 
     return out
 
+def sequence_to_datasets(piccolo_sequence, clean_metadata=True):
+    """Converts a Piccolo sequence dictionary to xarray Datasets.
+
+    Each dataset represents a single instrument.
+
+    Args:
+        piccolo_sequence: nested dictionary of piccolo spectra.
+        clean_metadata (bool): if True, attempts to clean metadata
+            so that the dataset is safe for writing to netcdf
+
+    Returns:
+        dictionary of xarray Datasets keyed by instrument serial
+    """
+    serials = list(piccolo_sequence.values())[0].keys()
+    out = {k:{} for k in serials}
+    # iterate serial numbers
+    for s in serials:
+        for fname in piccolo_sequence.keys():
+            for _dir in ['Upwelling', 'Downwelling']:
+                new_key = '{}_{}_{}'.format(
+                    fname.split('.pico')[0],
+                    s, _dir)
+                arr = piccolo_sequence[fname][s][_dir].copy()
+                # attempt to clean metadata for NetCDF4 writing
+                if clean_metadata:
+                    arr.attrs = _clean_metadata(arr)
+                out[s][new_key] = arr
+
+    return {k: xarray.merge([v]) for k,v in out.items()}
+
+def sequence_to_netcdf(piccolo_sequence, fname):
+    """Converts a Piccolo sequence dictionary to NetCDF files.
+
+    Each file represents a single instrument.
+
+    Args:
+        piccolo_sequence: nested dictionary of piccolo spectra.
+            Must be in the form [filename][instrument][downwelling]
+            or a dictionary of xarray Datasets
+        fname (str): destination filename
+    """
+
+    def parse_fname(ser):
+        if not fname.endswith('.nc'):
+            return fname + '_{}.nc'.format(ser)
+        else:
+            return fname[:-3] + '_{}.nc'.format(ser)
+    try:
+        for serial, ds in piccolo_sequence.items():
+            ds.to_netcdf(parse_fname(serial))
+    except AttributeError:
+        piccolo_sequence = sequence_to_datasets(piccolo_sequence, True)
+        for serial, ds in piccolo_sequence.items():
+            ds.to_netcdf(parse_fname(serial))
 
 # Private funcs
 def _assign_coords(dataArray, coords = ['Dark', 'name', 'Direction']):
@@ -111,3 +165,17 @@ def _get_wavelengths(dataArray):
     # poly1d requires coefs in reverse power order
     wpoly = np.poly1d(coefs[::-1])
     return wpoly(dataArray.pixel)
+
+def _clean_metadata(da):
+    new_meta = {}
+    mapping = {
+        None: 'None',
+        True: 'True',
+        False: 'False'
+    }
+    for k, v in da.attrs.items():
+        try:
+            new_meta[k] = mapping[v]
+        except (KeyError, TypeError):
+            new_meta[k] = v
+    return new_meta
