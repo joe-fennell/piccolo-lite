@@ -18,17 +18,23 @@ def read_piccolo_file(piccolo_data, assign_coords=False):
     try:
         # assume a filepath first
         _data = _read_from_json_file(piccolo_data)
+        fpath = os.path.abspath(piccolo_data)
 
-    except FileNotFoundError as f:
+    except (FileNotFoundError, TypeError, OSError) as f:
+        fpath = 'NA'
         try:
             # try and read string directly
             _data = _parse_from_string(piccolo_data)
-        except:
-            raise f
+        except TypeError:
+            if type(piccolo_data) == dict:
+                _data = piccolo_data
+            else:
+                raise f
 
     spectra = []
     for i, ds in enumerate(_data['Spectra']):
         _pixel = _make_spectrum(ds)
+        _pixel.attrs['SourceFilePath'] = fpath
         # assign wavelength coordinate
         _pixel = _pixel.assign_coords({'wavelength': ('pixel',
                                                       _get_wavelengths(_pixel))
@@ -93,11 +99,11 @@ def _parse_from_string(data_string):
 
 def _make_spectrum(reading):
     # do baseline parsing to xarray
-    pix = np.array(reading['Pixels'], dtype='uint32')
-    return xarray.DataArray(
-        pix,
-        coords = [('pixel', np.arange(len(pix)))],
-        attrs = reading['Metadata'])
+    pix = np.array(reading['Pixels'], dtype=float)
+    da = xarray.DataArray(pix,
+                          coords = [('pixel', np.arange(len(pix)))],
+                          attrs = reading['Metadata'])
+    return da
 
 
 def _get_wavelengths(dataArray):

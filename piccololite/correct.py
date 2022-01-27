@@ -30,7 +30,8 @@ class RadiometricCorrection:
     As it has been observed that the QE Pro used in our lab group does not have
     adequate optical dark pixels, the dark signal is estimated from the
     reference file rather than from the optical dark pixels. By default the
-    first dark file will be used.
+    first dark file will be used. Pixels that reach the SaturationLevel of the
+    device are masked for this.
 
     ### 2. Non Linearity Correction
 

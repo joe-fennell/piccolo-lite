@@ -1,11 +1,50 @@
 from piccololite import read_piccolo_file, read_piccolo_sequence
 import os
+import json
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 def test_file_read():
     file1 = 'b000000_s000005_light.pico'
     ds = read_piccolo_file(os.path.join(HERE, 'data', file1))
+    _check_b000000_s000005_light(ds)
+    # Open another and test lengths are correct
+    file2 = 'b000000_s000000_dark.pico'
+    ds2 = read_piccolo_file(os.path.join(HERE, 'data', file2))
+    _check_b000000_s000000_dark(ds2)
+
+
+def test_dict_read():
+    file1 = 'b000000_s000005_light.pico'
+    with open(os.path.join(HERE, 'data', file1), 'r') as f:
+        json_str = json.loads(f.read())
+    ds = read_piccolo_file(json_str)
+    _check_b000000_s000005_light(ds)
+
+
+def test_json_str_read():
+    file1 = 'b000000_s000005_light.pico'
+    with open(os.path.join(HERE, 'data', file1), 'r') as f:
+        json_str = f.read()
+    ds = read_piccolo_file(json_str)
+    _check_b000000_s000005_light(ds)
+
+
+def test_dir_read():
+    _ds = read_piccolo_sequence(os.path.join(HERE, 'data'))
+    ds = _ds['b000000_s000005_light.pico']
+    _check_b000000_s000005_light(ds)
+
+
+def test_dir_read_single():
+    _ds = read_piccolo_sequence([os.path.join(HERE, 'data',
+                                             'b000000_s000005_light.pico')])
+    ds = _ds['b000000_s000005_light.pico']
+    _check_b000000_s000005_light(ds)
+
+
+# file specific checking parameters
+def _check_b000000_s000005_light(ds):
     # Manually checked raw pixel values for b000000_s000005_light.pico
     assert ds['S_QEP00984'][0][0] == 1644
     assert ds['S_QEP00984'][0][-1] == 200000
@@ -20,41 +59,7 @@ def test_file_read():
     assert "SaturationLevel" in ds['S_FLMS01691'][1].attrs
     assert "SaturationLevel" in ds['S_QEP00984'][1].attrs
 
-    # Open another and test lengths are correct
-
-    file2 = 'b000000_s000000_dark.pico'
-    ds2 = read_piccolo_file(os.path.join(HERE, 'data', file2))
-
+def _check_b000000_s000000_dark(ds):
     # Manually checked array lengths
-    assert len(ds2['S_FLMS01691'][0]) == 2048
-    assert len(ds2['S_QEP00984'][0]) == 1044
-
-
-def test_dir_read():
-    _ds = read_piccolo_sequence(os.path.join(HERE, 'data'))
-    ds = _ds['b000000_s000005_light.pico']
-
-    # Manually checked raw pixel values for b000000_s000005_light.pico
-    assert ds['S_QEP00984'][0][0] == 1644
-    assert ds['S_QEP00984'][0][-1] == 200000
-    assert ds['S_FLMS01691'][0][0] == 7
-    assert ds['S_FLMS01691'][0][-1] == 752
-
-    # Manual check metadata
-    assert "SaturationLevel" in ds['S_FLMS01691'][1].attrs
-    assert "SaturationLevel" in ds['S_QEP00984'][1].attrs
-
-def test_dir_read_single():
-    _ds = read_piccolo_sequence([os.path.join(HERE, 'data',
-                                             'b000000_s000005_light.pico')])
-    ds = _ds['b000000_s000005_light.pico']
-
-    # Manually checked raw pixel values for b000000_s000005_light.pico
-    assert ds['S_QEP00984'][0][0] == 1644
-    assert ds['S_QEP00984'][0][-1] == 200000
-    assert ds['S_FLMS01691'][0][0] == 7
-    assert ds['S_FLMS01691'][0][-1] == 752
-
-    # Manual check metadata
-    assert "SaturationLevel" in ds['S_FLMS01691'][1].attrs
-    assert "SaturationLevel" in ds['S_QEP00984'][1].attrs
+    assert len(ds['S_FLMS01691'][0]) == 2048
+    assert len(ds['S_QEP00984'][0]) == 1044

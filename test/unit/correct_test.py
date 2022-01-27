@@ -21,3 +21,20 @@ def test_transform():
     r = RadiometricCorrection(cal_paths)
     x = r.transform(_ds)
     assert type(x) == dict
+
+def test_transform_alternative_dark():
+    _ds = read_piccolo_sequence(os.path.join(HERE, 'data'))
+    r1 = RadiometricCorrection(cal_paths, 'b000000_s000009_dark.pico')
+    r2 = RadiometricCorrection(cal_paths, 'b000000_s000000_dark.pico')
+    x1 = r1.transform(_ds)
+    x2 = r2.transform(_ds)
+    # check dark references aren't identical
+    assert r1.dark_reference != r2.dark_reference
+    # assert both returns are valid
+    assert type(x1) == dict
+    assert type(x2) == dict
+    # assert both returns aren't identical
+    fn = 'b000000_s000000_light.pico'
+    ser = 'S_QEP00984'
+    dirs = 'Downwelling'
+    assert (x1[fn][ser][dirs] != x2[fn][ser][dirs]).any()
