@@ -18,6 +18,7 @@ setuptools.setup(
         'xarray',
         'numpy',
         'pandas',
+        'scipy',
         'netcdf4'
     ],
     scripts=[],
