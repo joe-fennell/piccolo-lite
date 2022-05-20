@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="piccololite",  # Replace with your own username
-    version="0.1",
+    version="0.1.2",
     author="Joseph T. Fennell",
     author_email="info@joefennell.org",
     description="Lightweight Piccolo system i/o and calibration module",

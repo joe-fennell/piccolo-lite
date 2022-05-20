@@ -92,7 +92,7 @@ class RadiometricCorrection:
         Args:
             spectrum: DataArray with Direction and name parameters
         """
-        serial = self._get_serial(spectrum.attrs['name'])
+        serial = self._get_serial(spectrum.attrs['SerialNumber'])
         direction = spectrum.attrs['Direction']
         return self._cal_coefs[serial][direction]
 
@@ -104,7 +104,7 @@ class RadiometricCorrection:
         """
         if self.dark_reference:
             direction = spectrum.attrs['Direction']
-            serial = spectrum.attrs['name']
+            serial = spectrum.attrs['SerialNumber']
             # just take the mean across all regions
             return self.dark_reference[serial][direction]
         else:
@@ -178,7 +178,7 @@ class RadiometricCorrection:
 
     def _get_serial(self, filepath):
         base = os.path.basename(filepath)
-        return base.split('_')[1]
+        return base.split('_')[0]
 
     def _load_calibration(self, fpath):
         raw = pandas.read_csv(fpath)

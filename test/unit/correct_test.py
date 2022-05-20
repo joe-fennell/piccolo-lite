@@ -2,7 +2,7 @@ from piccololite import read_piccolo_sequence, RadiometricCorrection
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-cals = ['S_FLMS01691_CalCoeffs.csv', 'S_QEP00984_CalCoeffs.csv']
+cals = ['FLMS01691_CalCoeffs.csv', 'QEP00984_CalCoeffs.csv']
 cal_paths = [os.path.join(HERE, 'data', x) for x in cals]
 
 def test_instantiate():
@@ -35,6 +35,6 @@ def test_transform_alternative_dark():
     assert type(x2) == dict
     # assert both returns aren't identical
     fn = 'b000000_s000000_light.pico'
-    ser = 'S_QEP00984'
+    ser = 'QEP00984'
     dirs = 'Downwelling'
     assert (x1[fn][ser][dirs] != x2[fn][ser][dirs]).any()

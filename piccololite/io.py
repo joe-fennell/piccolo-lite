@@ -5,6 +5,7 @@ import numpy as np
 import pandas
 import os
 import xarray
+import logging
 
 
 def read_piccolo_file(piccolo_data, assign_coords=False):
@@ -35,7 +36,10 @@ def read_piccolo_file(piccolo_data, assign_coords=False):
     names = []
     for i, ds in enumerate(_data['Spectra']):
         _pixel = _make_spectrum(ds)
+        logging.debug(('spectrum raw length: {}'.format(len(_pixel))))
         _pixel.attrs['SourceFilePath'] = fpath
+        _pixel.attrs['Direction'] = _pixel.attrs['Direction'].capitalize()
+        _pixel.attrs['SerialNumber'] = _pixel.attrs['SerialNumber'].upper()
         # assign wavelength coordinate
         _pixel = _pixel.assign_coords({'wavelength': ('pixel',
                                                       _get_wavelengths(_pixel))
@@ -44,14 +48,14 @@ def read_piccolo_file(piccolo_data, assign_coords=False):
             _pixel = _assign_coords(_pixel, assign_coords)
 
         spectra.append(_pixel.swap_dims({'pixel': 'wavelength'}))
-        names.append(_pixel.attrs['name'])
+        names.append(_pixel.attrs['SerialNumber'])
 
     # sort into 1 dataset per instrument
     out = {k:{'Downwelling':None, 'Upwelling':None} for k in np.unique(names)}
 
     for s in spectra:
-        name = s.attrs['name']
-        direction = s.attrs['Direction']
+        name = s.attrs['SerialNumber'].upper()
+        direction = s.attrs['Direction'].capitalize()
         out[name][direction] = s
     return out
 
@@ -90,6 +94,7 @@ def sequence_to_datasets(piccolo_sequence, clean_metadata=True):
         dictionary of xarray Datasets keyed by instrument serial
     """
     serials = list(piccolo_sequence.values())[0].keys()
+    logging.debug(serials)
     out = {k:{} for k in serials}
     # iterate serial numbers
     for s in serials:
@@ -98,11 +103,13 @@ def sequence_to_datasets(piccolo_sequence, clean_metadata=True):
                 new_key = '{}_{}_{}'.format(
                     fname.split('.pico')[0],
                     s, _dir)
+
                 arr = piccolo_sequence[fname][s][_dir].copy()
                 # attempt to clean metadata for NetCDF4 writing
                 if clean_metadata:
                     arr.attrs = _clean_metadata(arr)
                 out[s][new_key] = arr
+                logging.debug('dataset converted: '+new_key)
 
     return {k: xarray.merge([v]) for k,v in out.items()}
 
@@ -132,7 +139,7 @@ def sequence_to_netcdf(piccolo_sequence, fname):
             ds.to_netcdf(parse_fname(serial))
 
 # Private funcs
-def _assign_coords(dataArray, coords = ['Dark', 'name', 'Direction']):
+def _assign_coords(dataArray, coords = ['Dark', 'SerialNumber', 'Direction']):
     for c in coords:
         try:
             dataArray = dataArray.expand_dims({c.lower(): [dataArray.attrs[c]]})
