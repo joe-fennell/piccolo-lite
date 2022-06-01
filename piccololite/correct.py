@@ -5,8 +5,10 @@ import os
 import pandas
 import xarray
 import numpy as np
+import logging
 
 from ._version import __version__
+# logging.basicConfig(level=logging.DEBUG)
 
 class RadiometricCorrection:
     """Class for performing calibration transformation of Piccolo data.
@@ -25,44 +27,75 @@ class RadiometricCorrection:
 
     ### 2. Non Linearity Correction
 
-    This is a linear transformation:
+    Correct for non linearity across the dynamic range of the sensor
         corrected = dark + (raw - dark) / f(raw - dark)
     where f is a polynomial specified in the header
 
     ### 3. Dark Signal Subtraction
 
-    This is a linear transformation:
+    Subtract off the dark signal (determined by a shutter closed measurement)
         subtracted = corrected - dark
 
     ### 4. Integration Normalisation
 
-    This is a linear transformation:
+    Scale each measurement so that it is in unit DNs per second
         normalised = subtracted / integration_time
 
-    ### 5. Gain adjustment
+    ### 5. Bandwidth scaling
+
+    Scale each measurement such that it in unit DNs per second per nm
+        scaled = normalised / bandwidth
+
+    ### 6. Gain adjustment (optional)
 
     Conversion of DN to calibrated units using a calibration file
-        calibrated = normalised * gain
+        calibrated = scaled * gain
 
     """
 
-    def __init__(self, cal_file_paths, dark_reference=None):
+    def __init__(self, calibration_file_paths=None, dark_reference=None,
+                 correct_non_linearity=True, trim_optical_range=True,
+                 correct_dark_signal=True, correct_integration_time=True,
+                 correct_bandwidth=True, correct_gain=True):
         """
         Args:
-            cal_file_paths (list): a list of filepaths with the identifier
+            calibration_file_paths (list): a list of filepaths with the serial
                 in the filename (i.e. FLMS01691_cals_.csv). Input files must
                 have wvl, dnw and upw fields.
             dark_reference (str): If None, the average of all dark files in the
                 sequence will be used (default). A filename can be supplied to
                 specify a single file
+            correct_non_linearity (bool): apply non linearity correction
+            trim_optical_range (bool): trim wavelength range to optical region
+            correct_dark_signal (bool): subtract off the dark signal
+            correct_integration (bool): divide by integration time
+            correct_gain (bool): apply gain multiplier (note this requires
+                calibration_file_paths to be specified)
+            correct_bandwidth (bool): divide by bandwidth
+
+        Note: if cal_file_paths is not provided, no gain correction is made, so
+        your data will be corrected DNs (rather than a radiometric unit)
+
         """
         self._cal_coefs = {}
         self.dark_reference = None
         self._dark_reference_file = dark_reference
+        # flags defining which processing is applied
+        self._do_non_linearity_correction = correct_non_linearity
+        self._do_optical_range_trim = trim_optical_range
+        self._do_correct_ds = correct_dark_signal
+        self._do_correct_int_time = correct_integration_time
+        self._do_correct_gain = correct_gain
+        self._do_bandwidth_scaling = correct_bandwidth
 
-        for c in cal_file_paths:
-            serial = self._get_serial(c)
-            self._cal_coefs[serial] = self._load_calibration(c)
+        if calibration_file_paths is not None:
+            for c in calibration_file_paths:
+                serial = self._get_serial(c)
+                self._cal_coefs[serial] = self._load_calibration(c)
+
+        else:
+            logging.warning('No calibration file provided. Final radiometric correction will not be made')
+            self._do_correct_gain = False
 
     def transform(self, piccolo_sequence):
         """Apply calibration transform
@@ -138,37 +171,84 @@ class RadiometricCorrection:
                 arr = f[serial][_dir]
                 sat_lvl = arr.attrs['SaturationLevel']
                 direction = arr.attrs['Direction']
-                # Calculate dark signal
-                _arr = self._trim_to_optical_range(arr).where(arr < sat_lvl)
-                _sub[direction] = float(_arr.mean())
+                # trim and mask out saturated
+                x = self._trim_to_optical_range(arr).where(arr < sat_lvl)
+                # # convert to dark signal rate
+                # x = x / self._get_integration_time_s(x)
+                _sub[direction] = float(x.mean())
             out[serial] = _sub
         self.dark_reference = out
 
     def _transform_single(self, da):
         # Get parameters
         dark_signal = self.get_dark_signal(da)
-        calibration = self.get_calibration(da)
         # make an xarray copy
         x = da.copy()
-
         # non linearity correction
-        x = self._correct_non_linearity(x, dark_signal)
+        if self._do_non_linearity_correction:
+            x = self._correct_non_linearity(x, dark_signal)
+            logging.debug('post linearity correct mean: {}'.format(
+                x.mean().values))
         # Trim to internally specified optical range
-        x = self._trim_to_optical_range(x)
-        # dark signal subtraction
+        if self._do_optical_range_trim:
+            x = self._trim_to_optical_range(x)
+            logging.debug('post optic range trim mean: {}'.format(
+                x.mean().values))
+        # dark signal subtraction - note that this is reliant on dark signal
+        # integration time being equal to measured signal integration time
+        if self._do_correct_ds:
+            x = x - dark_signal
+            logging.debug('post DS subtraction mean: {}'.format(
+                x.mean().values))
         # integration time normalisation
-        x = (x - dark_signal) / x.attrs['IntegrationTime']
-        x = calibration.interp_like(x, method='linear') * x
+        if self._do_correct_int_time:
+            x = x / self._get_integration_time_s(da)
+
+        if self._do_bandwidth_scaling:
+            x = x / self._get_band_width(x)
+
+        if self._do_correct_gain:
+            calibration = self.get_calibration(da)
+            x = calibration.interp_like(x, method='linear') * x
+            logging.debug('post gain mean: {}'.format(x.mean().values))
         # add metadata again
         x.attrs = da.attrs
         # add additional metadata
-        x.attrs['CalibrationFilePath'] = calibration.attrs['SourceFilePath']
+        try:
+            x.attrs['CalibrationFilePath'] = calibration.attrs['SourceFilePath']
+        except UnboundLocalError:
+            x.attrs['CalibrationFilePath'] = 'None'
         x.attrs['DarkSignal'] = dark_signal
         x.attrs['RadiometricCorrectionCompleteUTC'] = \
             datetime.datetime.utcnow().isoformat()
         x.attrs['RadiometricCorrectionVersion'] = 'piccololite_v{}'.format(
             __version__)
         return x
+
+    def _get_band_width(self, x):
+        delta = x.wavelength.diff('wavelength') / 2
+        delta = delta.pad(pad_width={'wavelength': 1}, mode='edge')
+        return delta.values[:-1] + delta.values[1:]
+
+    def _get_integration_time_s(self, dataArray):
+        try:
+            units = dataArray.attrs['IntegrationTimeUnits']
+        except:
+            raise RuntimeError('Datasets must specify IntegrationTimeUnits')
+
+        try:
+            int_time = dataArray.attrs['IntegrationTime']
+        except:
+            raise RuntimeError('Datasets must specify IntegrationTime')
+
+        if units == 'milliseconds':
+            return float(int_time) / 1000
+
+        elif units == 'seconds':
+            return float(int_time)
+
+        else:
+            raise RuntimeError('IntegrationTimeUnits ({}) not supported'.format(units))
 
     def _truncate(self, spectrum):
         _01 = spectrum.quantile(.01)

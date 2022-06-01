@@ -1,5 +1,5 @@
 from piccololite import read_piccolo_file, read_piccolo_sequence, \
-sequence_to_datasets
+sequence_to_datasets, aggregate_sequence
 
 import os
 import json
@@ -52,6 +52,11 @@ def test_sequence_to_datasets():
     assert len(_new['QEP00984']) == 26
     assert len(_new['FLMS01691']) == 26
 
+
+def test_aggregate():
+    _ds = read_piccolo_sequence(os.path.join(HERE, 'data'))
+    for test in ['mean', 'median', 'var', 'std', 'min', 'max']:
+        _ = aggregate_sequence(_ds, test)
 
 # file specific checking parameters
 def _check_b000000_s000005_light(ds):

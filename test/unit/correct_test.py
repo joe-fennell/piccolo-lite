@@ -22,6 +22,12 @@ def test_transform():
     x = r.transform(_ds)
     assert type(x) == dict
 
+def test_transform_no_cal():
+    _ds = read_piccolo_sequence(os.path.join(HERE, 'data'))
+    r = RadiometricCorrection()
+    x = r.transform(_ds)
+    assert type(x) == dict
+
 def test_transform_alternative_dark():
     _ds = read_piccolo_sequence(os.path.join(HERE, 'data'))
     r1 = RadiometricCorrection(cal_paths, 'b000000_s000009_dark.pico')
