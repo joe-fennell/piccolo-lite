@@ -285,10 +285,13 @@ class RadiometricCorrection:
         return [0,len(dataArray)]
 
     def _correct_non_linearity(self, dataArray, dark):
+        dataArray = dataArray.astype(float)
         # Dark signal subtraction and non-linearity correction
         coefs = np.array(dataArray.attrs['NonlinearityCorrectionCoefficients'])
         # poly1d requires coefs in reverse power order
-        cpoly = np.poly1d(coefs[::-1])
+        # cpoly = np.poly1d(coefs[::-1])
+        # cpoly = np.poly1d(coefs, True)
+        cpoly = np.polynomial.Polynomial(coefs)
         corrected = dark + (dataArray - dark) / cpoly(dataArray - dark)
         corrected.attrs = dataArray.attrs
         return corrected
